@@ -1,0 +1,27 @@
+#!/bin/bash
+
+#
+# liburing.h and liburing/*.h need to be in /usr/local/include
+# liburing.a needs to be in /usr/local/lib
+#
+
+#CFLAGS='-Wall -O0 -g -fsanitize=address -fno-omit-frame-pointer -fsanitize-recover=address'
+#CFLAGS='-g'
+CFLAGS='-O3'
+
+gcc -c mrloop.c -o mrloop.o ${CFLAGS}
+
+if [ "$1" == "tests" ]; then
+  gcc tst.c mrloop.o -L. -luring -o tst ${CFLAGS}
+  gcc mrctst.c mrloop.o -L. -luring -o mrctst ${CFLAGS}
+  gcc mctst.c mrloop.o -L. -luring -o mctst ${CFLAGS}
+  gcc rtst.c mrloop.o -L. -luring -o rtst ${CFLAGS}
+  #gcc ur.c -L. -luring -o ur -O3 
+fi
+
+if [ "$1" == "install" ]; then
+  ar crs libmrloop.a mrloop.o /usr/local/lib/liburing.a
+  mv libmrloop.a /usr/local/lib
+  cp mrloop.h /usr/local/include
+fi
+

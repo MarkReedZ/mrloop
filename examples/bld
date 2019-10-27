@@ -1,0 +1,5 @@
+
+CFLAGS='-O3'
+gcc echo_server.c -I ../ -L.. -lmrloop -luring -o echo_server ${CFLAGS}
+gcc timer.c -I ../ -L.. -lmrloop -luring -o timer ${CFLAGS}
+
