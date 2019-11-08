@@ -1,7 +1,7 @@
 
 #include "mrloop.h"
 
-static mrLoop *loop = NULL;
+static mr_loop_t *loop = NULL;
 
 void on_timer() { 
   printf("tick\n");
@@ -15,9 +15,9 @@ static void sig_handler(const int sig) {
 
 int main() {
 
-  loop = createLoop(sig_handler);
-  addTimer(loop, 1, on_timer);
-  runLoop(loop);
-  freeLoop(loop);
+  loop = mr_create_loop(sig_handler);
+  mr_add_timer(loop, 1, on_timer);
+  mr_run(loop);
+  mr_free(loop);
 
 }

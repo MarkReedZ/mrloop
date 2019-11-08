@@ -21,26 +21,21 @@ static void print_buffer( char* b, int len ) {
   }
   printf("\n");
 }
-
-static void sig_handler(const int sig) {
-  printf("mrloop Signal handled: %s.\n", strsignal(sig));
-  close(mrfd);
-  exit(EXIT_SUCCESS);
-}
 */
-mrLoop *createLoop(sigCB *sig) {
+
+mr_loop_t *mr_create_loop(mr_signal_cb *sig) {
 
   signal(SIGINT, sig);
   signal(SIGTERM, sig);
 
-  mrLoop *loop = calloc( 1, sizeof(mrLoop) );
+  mr_loop_t *loop = calloc( 1, sizeof(mr_loop_t) );
   loop->ring = calloc( 1, sizeof(struct io_uring) );
   if ( io_uring_queue_init(128, loop->ring, 0) ) {
     perror("io_uring_setup");
     printf("Loop creation failed\n");
     return NULL;
   }
-
+  loop->fd = loop->ring->ring_fd;
   loop->writeDataEvent = calloc( 1, sizeof(event_t) );
   loop->writeDataEvent->type = WRITE_DATA_EV;
   for (int i = 0; i < MAX_CONN; i++) {
@@ -48,6 +43,9 @@ mrLoop *createLoop(sigCB *sig) {
     loop->readDataEvents[i] = calloc( 1, sizeof(event_t) );
     loop->readEvents[i]->type = READ_EV;
     loop->readDataEvents[i]->type = READ_DATA_EV;
+
+    //loop->writeEvents[i] = calloc( 1, sizeof(event_t) );
+    //loop->writeEvents[i]->type = WRITE_EV;
   }
 
   return loop;
@@ -61,16 +59,16 @@ int setnonblocking(int fd) {
     return 0;
 }
 
-void freeLoop(mrLoop *loop) {
+void mr_free(mr_loop_t *loop) {
   free(loop->ring);
   free(loop); 
 }
 
-void stopLoop(mrLoop *loop) {
+void mr_stop(mr_loop_t *loop) {
   loop->stop = 1;
 }
 
-void _urpoll( mrLoop *loop, int fd, event_t *ev ) {
+void _urpoll( mr_loop_t *loop, int fd, event_t *ev ) {
 
   DBG printf(" urpoll fd %d type %d\n",fd, ev->type);
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
@@ -80,7 +78,22 @@ void _urpoll( mrLoop *loop, int fd, event_t *ev ) {
 
 }
 
-void _addTimer( mrLoop *loop, event_t *ev ) {
+void mr_add_write_callback( mr_loop_t *loop, mr_write_cb *cb, void *conn, int fd ) {
+
+  event_t *ev  = calloc( 1, sizeof(event_t) );
+  ev->type = WRITE_EV;
+  ev->fd = fd;
+  ev->user_data = conn;
+  ev->wcb = cb;
+
+  struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
+  io_uring_prep_poll_add( sqe, fd, POLLOUT );
+  sqe->user_data = (unsigned long)ev;
+  io_uring_submit(loop->ring);
+  
+}
+
+void _addTimer( mr_loop_t *loop, event_t *ev ) {
 
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
   if (!sqe) { printf("child: get sqe failed\n"); return; }
@@ -91,7 +104,7 @@ void _addTimer( mrLoop *loop, event_t *ev ) {
 }
 
 
-void _read( mrLoop *loop, event_t *ev ) {
+void _read( mr_loop_t *loop, event_t *ev ) {
   DBG printf(" _read fd %d\n", ev->fd);
   event_t *rdev = loop->readDataEvents[ev->fd];
 
@@ -103,7 +116,7 @@ void _read( mrLoop *loop, event_t *ev ) {
 
 }
 
-void _accept( mrLoop *loop, event_t *ev ) {
+void _accept( mr_loop_t *loop, event_t *ev ) {
 
 
   struct sockaddr_in addr;
@@ -145,7 +158,7 @@ void _accept( mrLoop *loop, event_t *ev ) {
 
 }
 
-void runLoop( mrLoop *loop ) {
+void mr_run( mr_loop_t *loop ) {
   struct io_uring_cqe *cqe;
 
   while ( 1 ) {
@@ -162,8 +175,6 @@ void runLoop( mrLoop *loop ) {
     if ( ev->type == TIMER_EV ) {
       uint64_t value;
       int rd = read(ev->fd, &value, 8);
-      //read(ev->fd, &value, 8);
-      //printf("read %d from timerfd\n",rd);
       ev->tcb();
       _addTimer(loop, ev);
     }
@@ -173,6 +184,10 @@ void runLoop( mrLoop *loop ) {
     if ( ev->type == READ_EV ) {
       DBG printf(" read ev \n");
       _read(loop, ev);
+    }
+    if ( ev->type == WRITE_EV ) {
+      DBG printf(" write ev \n");
+      ev->wcb(ev->user_data, ev->fd);
     }
     if ( ev->type == READ_DATA_EV ) {
 
@@ -189,13 +204,23 @@ void runLoop( mrLoop *loop ) {
         //printf("DELME after on_data num sqes now zero\n");
       }
     }
+    if ( ev->type == WRITE_DATA_EV ) {
+      DBG printf(" write data ev \n");
+      ev->wdcb(ev->user_data);
+    }
+    if ( ev->type == TIMER_ONCE_EV ) {
+      uint64_t value;
+      int rd = read(ev->fd, &value, 8);
+      ev->tcb();
+      close(ev->fd);
+    }
 
     //if ( ev2 ) ev2->cb(ev2->fd, cqe->res);
     io_uring_cqe_seen(loop->ring, cqe);
   }
 }
 
-int addTimer( mrLoop *loop, int seconds, timerCB *cb ) {
+int mr_add_timer( mr_loop_t *loop, int seconds, mr_timer_cb *cb ) {
 
   struct itimerspec exp = {
     .it_interval = { seconds, 0},
@@ -214,7 +239,7 @@ int addTimer( mrLoop *loop, int seconds, timerCB *cb ) {
   return 0;
 }
 
-int mrTcpServer( mrLoop *loop, int port, acceptCB *cb, readCB *rcb) { //, char *buf, int buflen ) {
+int mr_tcp_server( mr_loop_t *loop, int port, mr_accept_cb *cb, mr_read_cb *rcb) { //, char *buf, int buflen ) {
   int listen_fd;
   struct sockaddr_in servaddr;
   int flags = 1;
@@ -261,7 +286,7 @@ int mrTcpServer( mrLoop *loop, int port, acceptCB *cb, readCB *rcb) { //, char *
   return 0;
 }
 
-int mrConnect( mrLoop *loop, char *addr, int port, readCB *rcb) {
+int mr_connect( mr_loop_t *loop, char *addr, int port, mr_read_cb *rcb) {
 
   int fd, ret, on = 1;
   struct sockaddr_in sa;
@@ -316,12 +341,12 @@ int mrConnect( mrLoop *loop, char *addr, int port, readCB *rcb) {
   return fd;
 }
 
-void mrFlush( mrLoop *loop ) {
+void mr_flush( mr_loop_t *loop ) {
   io_uring_submit(loop->ring); 
   num_sqes = 0;
 }
 
-void mrWritev( mrLoop *loop, int fd, struct iovec *iovs, int cnt ) {
+void mr_writev( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt ) {
 
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
   io_uring_prep_writev(sqe, fd, iovs, cnt, 0);
@@ -331,7 +356,7 @@ void mrWritev( mrLoop *loop, int fd, struct iovec *iovs, int cnt ) {
 
 }
 
-void mrWritevf( mrLoop *loop, int fd, struct iovec *iovs, int cnt ) {
+void mr_writevf( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt ) {
 
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
   io_uring_prep_writev(sqe, fd, iovs, cnt, 0);
@@ -341,8 +366,58 @@ void mrWritevf( mrLoop *loop, int fd, struct iovec *iovs, int cnt ) {
 
 }
 
+void mr_writevcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data, mr_write_done_cb *cb ) {
+
+  event_t *ev = malloc( sizeof(event_t) );
+  ev->type = WRITE_DATA_EV;
+  ev->fd = fd;
+  ev->wdcb = cb;
+  ev->user_data = user_data;
+
+  struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
+  io_uring_prep_writev(sqe, fd, iovs, cnt, 0);
+  sqe->user_data = (unsigned long)ev;
+  num_sqes += 1;
+  if ( num_sqes > 64 ) { io_uring_submit(loop->ring); num_sqes = 0; }
+  //io_uring_submit(loop->ring); 
+  //num_sqes = 0;
+
+}
+
+//static inline void io_uring_prep_write_fixed(struct io_uring_sqe *sqe, int fd, const void *buf, unsigned nbytes, off_t offset, int buf_index)
+
+void mr_write( mr_loop_t *loop, int fd, const void *buf, unsigned nbytes, off_t offset ) {
+
+  DBG printf(" mr_write >%.*s<\n", nbytes, (char*)buf );
+  struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
+  io_uring_prep_write_fixed(sqe, fd, buf, nbytes, offset, 0);
+  sqe->user_data = 0;
+  io_uring_submit(loop->ring); 
+  num_sqes = 0;
+
+}
+
+void mr_call_after( mr_loop_t *loop, mr_timer_cb *func, int milliseconds ) {
+
+  struct itimerspec exp = {
+    .it_interval = { 0, milliseconds * 1000000},
+    .it_value    = { 0, milliseconds * 1000000},
+  };
+  int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+  if (tfd < 0) { perror("timerfd_create"); return; }
+  if (timerfd_settime(tfd, 0, &exp, NULL)) { perror("timerfd_settime"); close(tfd); return; }
+
+  event_t *ev = malloc( sizeof(event_t) );
+  ev->type = TIMER_ONCE_EV;
+  ev->fd = tfd;
+  ev->tcb = func;
+  _addTimer(loop, ev);
+
+}
+
+
 /*
-void mrWritev2( mrLoop *loop, int fd, struct iovec *iovs, int cnt, void *user_data ) {
+void mr_writev2( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data ) {
 
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
   io_uring_prep_writev(sqe, fd, iovs, cnt, 0);
@@ -360,7 +435,7 @@ sigset_t sig);
 
   ret = io_uring_enter(ring->ring_fd, 0, 4, IORING_ENTER_GETEVENTS, NULL);
 
-void mrWrite( mrLoop *loop, int fd, char *buf, int buflen ) {
+void mr_write( mr_loop_t *loop, int fd, char *buf, int buflen ) {
   DBG printf("mrWrite >%.*s<\n", buflen, buf);
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
  

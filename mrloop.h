@@ -21,54 +21,68 @@
 #define READ_EV 3
 #define READ_DATA_EV 4
 #define WRITE_DATA_EV 5
+#define WRITE_EV 6
+#define TIMER_ONCE_EV 7
 
 #define MAX_CONN 1024
 
 
-typedef struct event event_t;
-typedef void writeCB(void *user_data);
+typedef struct event_s event_t;
+typedef void mr_write_cb(void *conn, int fd);
+typedef void mr_write_done_cb(void *user_data);
 
-typedef struct mrLoop {
+typedef struct mr_loop_t {
   int stop;
+  int fd;
   struct io_uring *ring;
   event_t *readEvents[MAX_CONN];
   event_t *readDataEvents[MAX_CONN];
+  //event_t *writeEvents[MAX_CONN];
   //event_t *writeDataEvents[MAX_CONN];
   event_t *writeDataEvent;
-  writeCB *writeCallback;
+  mr_write_cb *writeCallback;
   //struct iovec iovs[MAX_CONN];
-} mrLoop;
+} mr_loop_t;
 
-typedef void timerCB();
-typedef void *acceptCB(int fd, char **buf, int *buflen);
-typedef void readCB(void *conn, int fd, ssize_t nread, char *buf);
-typedef void sigCB(int sig);
+typedef void mr_timer_cb();
+typedef void *mr_accept_cb(int fd, char **buf, int *buflen);
+typedef void mr_read_cb(void *conn, int fd, ssize_t nread, char *buf);
+typedef void mr_signal_cb(int sig);
 
-typedef struct event {
+typedef struct event_s {
   int type;
   int fd;
-  timerCB *tcb;  // TODO union
-  acceptCB *acb;  
-  readCB *rcb;
-  //writeCB *wcb;
+  // TODO union
+  mr_timer_cb *tcb;  
+  mr_accept_cb *acb;  
+  mr_read_cb *rcb;
+  mr_write_cb *wcb;
+  mr_write_done_cb *wdcb;
   void *user_data;
 
   struct iovec iov;
 
 } event_t;
 
-mrLoop *createLoop();
-void freeLoop(mrLoop *loop);
-void stopLoop(mrLoop *loop);
-void runLoop(mrLoop *loop);
+mr_loop_t *mr_create_loop();
+void mr_free(mr_loop_t *loop);
+void mr_stop(mr_loop_t *loop);
+void mr_run(mr_loop_t *loop);
 
-int addTimer( mrLoop *loop, int seconds, timerCB *cb );
-int mrTcpServer( mrLoop *loop, int port, acceptCB *cb, readCB *rcb);//, char *buf, int buflen );
-int mrConnect( mrLoop *loop, char *addr, int port, readCB *rcb);
+void mr_add_write_callback( mr_loop_t *loop, mr_write_cb *cb, void *conn, int fd );
+int mr_add_timer( mr_loop_t *loop, int seconds, mr_timer_cb *cb );
+int mr_tcp_server( mr_loop_t *loop, int port, mr_accept_cb *cb, mr_read_cb *rcb);//, char *buf, int buflen );
+int mr_connect( mr_loop_t *loop, char *addr, int port, mr_read_cb *rcb);
 
-void mrFlush(mrLoop *loop);
-void mrWrite( mrLoop *loop, int fd, char *buf, int buflen );
-void mrWritev( mrLoop *loop, int fd, struct iovec *iovs, int cnt );
-void mrWritevf( mrLoop *loop, int fd, struct iovec *iovs, int cnt );
+void mr_flush(mr_loop_t *loop);
+void mr_write( mr_loop_t *loop, int fd, const void *buf, unsigned nbytes, off_t offset );
+void mr_writev( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt );
+void mr_writevf( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt );
+void mr_writevcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data, mr_write_done_cb *cb );
 
-//void mrWritev2( mrLoop *loop, int fd, struct iovec *iovs, int cnt, void *user_data );
+void mr_call_after( mr_loop_t *loop, mr_timer_cb *func, int milliseconds );
+
+
+
+
+

@@ -1,14 +1,7 @@
 
 
-
-mrWritev
- - don't know if we're backed up until cqe->res
-   We could spin the event loop before returning from this function
-   return EAGAIN, user will then submit a write callback and we use POLLOUT to wait 
-
-
-run out of ring QD
-  Can it happen? sqes can be consumed immediately and cqe size is 2x QD.
-    Use the new 5.4 ability to set CQE ring size
+IORING_SETUP_CQ_NODROP otherwise CQs drop if overflow
+-  Any attempt to submit new IO with a non-empty backlog will get an -EBUSY return from the kernel.
+Use the new 5.4 ability to set CQE ring size
 
 

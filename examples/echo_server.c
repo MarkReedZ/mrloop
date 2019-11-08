@@ -10,7 +10,7 @@ typedef struct _conn
   struct iovec iov;
 } conn_t;
 
-static mrLoop *loop = NULL;
+static mr_loop_t *loop = NULL;
 
 void *setup_conn(int fd, char **buf, int *buflen ) {
   conn_t *conn = calloc( 1, sizeof(conn_t) );
@@ -24,7 +24,7 @@ void on_data(void *conn, int fd, ssize_t nread, char *buf) {
   conn_t *c = conn;
   c->iov.iov_base = buf;
   c->iov.iov_len = nread;
-  mrWritev( loop, ((conn_t*)conn)->fd, &(c->iov), 1 );
+  mr_writev( loop, ((conn_t*)conn)->fd, &(c->iov), 1 );
 }
 
 static void sig_handler(const int sig) {
@@ -34,9 +34,9 @@ static void sig_handler(const int sig) {
 
 int main() {
 
-  loop = createLoop(sig_handler);
-  mrTcpServer( loop, 12345, setup_conn, on_data );
-  runLoop(loop);
-  freeLoop(loop);
+  loop = mr_create_loop(sig_handler);
+  mr_tcp_server( loop, 12345, setup_conn, on_data );
+  mr_run(loop);
+  mr_free(loop);
 
 }
