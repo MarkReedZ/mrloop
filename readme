@@ -1,14 +1,19 @@
 
 
-GETKEY
+GET - request per second
 
-no pipelining
-mrcache (iouring) 380k
-mrcache (epoll)   200k
-redis             240k
+no pipelining 10B
+mrcache (iouring) 215k
+redis             112k
+mrcache (epoll)   100k
 
-pipelining
-mrcache (iouring) 4.2m
-redis             1.5m
+pipelining 10B
+mrcache (iouring) 4.6m
+redis             1.2m
 memcached         700k
+
+pipelining 100kb
+memcached         38k
+mrcache (iouring) 32k
+redis             10k
 
