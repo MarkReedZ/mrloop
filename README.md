@@ -22,6 +22,15 @@ Echo server ( examples/echo_server.c )
 
 ```
 
+https://github.com/MarkReedZ/mrcache
+
+```
+10B gets per second
+  mrcache (iouring) 4.6m
+  redis             1.2m
+  memcached         700k
+```
+
 # Usage
 
 A simple timer.  See more code in examples/
