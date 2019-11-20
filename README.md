@@ -51,7 +51,7 @@ static void sig_handler(const int sig) {
 
 int main() {
 
-  loop = createLoop(sig_handler);
+  loop = mr_create_loop(sig_handler);
   mr_add_timer(loop, 1, on_timer);
   mr_run(loop);
   mr_free(loop);
