@@ -4,12 +4,11 @@ GETKEY
 
 no pipelining
 mrcache (iouring) 380k
-mrcache (ae)      200k
+mrcache (epoll)   200k
 redis             240k
 
 pipelining
-mrcache (iouring) 2.5m
-mrcache (ae)      2m
+mrcache (iouring) 4.2m
 redis             1.5m
 memcached         700k
 

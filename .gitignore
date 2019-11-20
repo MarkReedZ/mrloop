@@ -1,5 +1,9 @@
 
 .*.swp
+examples/*
+!examples/*.c
+!examples/*.h
+!examples/bld
 
 
 # Prerequisites

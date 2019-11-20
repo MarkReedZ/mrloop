@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <netdb.h>
 
 #define DBG if(0)
@@ -27,6 +28,8 @@ mr_loop_t *mr_create_loop(mr_signal_cb *sig) {
 
   signal(SIGINT, sig);
   signal(SIGTERM, sig);
+  signal(SIGHUP, sig);
+  signal(SIGPIPE, SIG_IGN);
 
   mr_loop_t *loop = calloc( 1, sizeof(mr_loop_t) );
   loop->ring = calloc( 1, sizeof(struct io_uring) );
@@ -51,16 +54,14 @@ mr_loop_t *mr_create_loop(mr_signal_cb *sig) {
   return loop;
 }
 
-int setnonblocking(int fd) {
-    if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFD,0) | O_NONBLOCK) == -1) {
-        printf("set blocking error: %d\n", errno);
-        return -1;
-    }
-    return 0;
-}
 
 void mr_free(mr_loop_t *loop) {
   free(loop->ring);
+  free(loop->writeDataEvent);
+  for (int i = 0; i < MAX_CONN; i++) {
+    free(loop->readEvents[i]);
+    free(loop->readDataEvents[i]);
+  }
   free(loop); 
 }
 
@@ -70,7 +71,6 @@ void mr_stop(mr_loop_t *loop) {
 
 void _urpoll( mr_loop_t *loop, int fd, event_t *ev ) {
 
-  DBG printf(" urpoll fd %d type %d\n",fd, ev->type);
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
   io_uring_prep_poll_add( sqe, fd, POLLIN );
   sqe->user_data = (unsigned long)ev;
@@ -105,7 +105,6 @@ void _addTimer( mr_loop_t *loop, event_t *ev ) {
 
 
 void _read( mr_loop_t *loop, event_t *ev ) {
-  DBG printf(" _read fd %d\n", ev->fd);
   event_t *rdev = loop->readDataEvents[ev->fd];
 
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
@@ -116,6 +115,7 @@ void _read( mr_loop_t *loop, event_t *ev ) {
 
 }
 
+// TODO use 5.5 async accept4 with SOCK_NONBLOCK
 void _accept( mr_loop_t *loop, event_t *ev ) {
 
 
@@ -123,12 +123,15 @@ void _accept( mr_loop_t *loop, event_t *ev ) {
   socklen_t len;
   int cfd = accept(ev->fd, (struct sockaddr*)&addr, &len);
 
+  if (fcntl(cfd, F_SETFL, fcntl(cfd, F_GETFD,0) | O_NONBLOCK) == -1) {
+    printf("set non blocking error : %d %s...\n", errno, strerror(errno));
+    exit(EXIT_FAILURE);
+  }
 
   if (cfd != -1) {
   //while ((cfd = accept(ev->fd, (struct sockaddr*)&addr, &len)) != -1) {
     //if (cfd >= MAX_CONN) { close(cfd); break; }
 
-    DBG printf(" accept fd %d\n", cfd);
     mrfd = cfd;
     char *buf;
     int buflen;
@@ -162,16 +165,15 @@ void mr_run( mr_loop_t *loop ) {
   struct io_uring_cqe *cqe;
 
   while ( 1 ) {
-    DBG printf("before cqe\n");
+
     //TODO ret is?  int ret = io_uring_wait_cqe(loop->ring, &cqe);
     io_uring_wait_cqe(loop->ring, &cqe);
     event_t *ev = (event_t*)cqe->user_data;
-    DBG printf(" ev? %p\n",ev);
     if ( !ev ) {
       io_uring_cqe_seen(loop->ring, cqe);
       continue; 
     }
-    DBG printf(" ev type %d\n",ev->type);
+
     if ( ev->type == TIMER_EV ) {
       uint64_t value;
       int rd = read(ev->fd, &value, 8);
@@ -182,30 +184,27 @@ void mr_run( mr_loop_t *loop ) {
       _accept( loop, ev );
     }
     if ( ev->type == READ_EV ) {
-      DBG printf(" read ev \n");
       _read(loop, ev);
     }
     if ( ev->type == WRITE_EV ) {
-      DBG printf(" write ev \n");
       ev->wcb(ev->user_data, ev->fd);
+      free(ev);
     }
     if ( ev->type == READ_DATA_EV ) {
 
-      if ( cqe->res == 0 ) {
-        close(ev->fd);
-      } else {
-        DBG printf(" data ev res %d\n", cqe->res );
-        DBG printf(" data ev fd %d\n", ev->fd );
+        // TODO Allow user to return a value saying close this?
+        //      I think we add a close callback and we close.
         ev->rcb( ev->user_data, ev->fd, cqe->res, ev->iov.iov_base );
-        //if ( cqe->res ) _urpoll( loop, ev->fd, loop->readEvents[ev->fd] );
-        _urpoll( loop, ev->fd, loop->readEvents[ev->fd] );
+        if ( loop->stop ) return;
+        //_urpoll( loop, ev->fd, loop->readEvents[ev->fd] );
+        if ( cqe->res > 0 ) _urpoll( loop, ev->fd, loop->readEvents[ev->fd] );
+        else {
+          // User will call close? Do we need to free anything? TODO
+        }
         //io_uring_submit(loop->ring);  // poll submits
         num_sqes = 0;
-        //printf("DELME after on_data num sqes now zero\n");
-      }
     }
     if ( ev->type == WRITE_DATA_EV ) {
-      DBG printf(" write data ev \n");
       ev->wdcb(ev->user_data);
     }
     if ( ev->type == TIMER_ONCE_EV ) {
@@ -215,16 +214,21 @@ void mr_run( mr_loop_t *loop ) {
       close(ev->fd);
     }
 
+    if ( loop->stop ) return;
     //if ( ev2 ) ev2->cb(ev2->fd, cqe->res);
     io_uring_cqe_seen(loop->ring, cqe);
   }
 }
 
-int mr_add_timer( mr_loop_t *loop, int seconds, mr_timer_cb *cb ) {
+int mr_add_timer( mr_loop_t *loop, double seconds, mr_timer_cb *cb ) {
 
+  int secs, ms;
+  secs = ms = 0;
+  if ( seconds < 1 ) ms = seconds * 1000;
+  else secs = seconds;
   struct itimerspec exp = {
-    .it_interval = { seconds, 0},
-    .it_value = { seconds, 0 },
+    .it_interval = { secs, ms * 1000000},
+    .it_value = { secs, ms * 1000000 },
   };
   int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
   if (tfd < 0) { perror("timerfd_create"); return -1; }
@@ -250,20 +254,14 @@ int mr_tcp_server( mr_loop_t *loop, int port, mr_accept_cb *cb, mr_read_cb *rcb)
   servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
   servaddr.sin_port = htons(port);
 
-  if ((listen_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+  if ((listen_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) == -1) {
       printf("socket error : %d ...\n", errno);
-      exit(EXIT_FAILURE);
-  }
-
-  if (setnonblocking(listen_fd) == -1) {
-      printf("set non blocking error : %d ...\n", errno);
       exit(EXIT_FAILURE);
   }
 
   setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, (void *)&flags, sizeof(flags));
   setsockopt(listen_fd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
   //if (error != 0) perror("setsockopt");
-
 
   if (bind(listen_fd, (struct sockaddr*)&servaddr, sizeof(struct sockaddr)) == -1) {
       printf("bind error : %d ...\n", errno);
@@ -275,6 +273,7 @@ int mr_tcp_server( mr_loop_t *loop, int port, mr_accept_cb *cb, mr_read_cb *rcb)
       exit(EXIT_FAILURE);
   }
 
+  // TODO free this in mr_free(loop)
   event_t *ev = malloc( sizeof(event_t) );
   ev->type = LISTEN_EV;
   ev->fd = listen_fd;
@@ -291,7 +290,7 @@ int mr_connect( mr_loop_t *loop, char *addr, int port, mr_read_cb *rcb) {
   int fd, ret, on = 1;
   struct sockaddr_in sa;
 
-  if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+  if ((fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) == -1) {
     printf("Error creating socket: %s\n", strerror(errno));
     return -1;
   }
@@ -311,11 +310,6 @@ int mr_connect( mr_loop_t *loop, char *addr, int port, mr_read_cb *rcb) {
       return -1;
     }
     memcpy(&sa.sin_addr, he->h_addr, sizeof(struct in_addr));
-  }
-
-  if (setnonblocking(fd) == -1) {
-    printf("set non blocking error : %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
   }
 
   ret = connect(fd, (struct sockaddr*)&sa, sizeof(sa));
@@ -339,6 +333,11 @@ int mr_connect( mr_loop_t *loop, char *addr, int port, mr_read_cb *rcb) {
   rdev->iov.iov_len = tmplen;
 
   return fd;
+}
+
+// TODO What if we have events in flight?
+void mr_close( mr_loop_t *loop, int fd ) {
+  close(fd);
 }
 
 void mr_flush( mr_loop_t *loop ) {
@@ -379,8 +378,6 @@ void mr_writevcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *us
   sqe->user_data = (unsigned long)ev;
   num_sqes += 1;
   if ( num_sqes > 64 ) { io_uring_submit(loop->ring); num_sqes = 0; }
-  //io_uring_submit(loop->ring); 
-  //num_sqes = 0;
 
 }
 
@@ -388,7 +385,6 @@ void mr_writevcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *us
 
 void mr_write( mr_loop_t *loop, int fd, const void *buf, unsigned nbytes, off_t offset ) {
 
-  DBG printf(" mr_write >%.*s<\n", nbytes, (char*)buf );
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
   io_uring_prep_write_fixed(sqe, fd, buf, nbytes, offset, 0);
   sqe->user_data = 0;
@@ -416,35 +412,3 @@ void mr_call_after( mr_loop_t *loop, mr_timer_cb *func, int milliseconds ) {
 }
 
 
-/*
-void mr_writev2( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data ) {
-
-  struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
-  io_uring_prep_writev(sqe, fd, iovs, cnt, 0);
-  sqe->user_data = user_data;
-  num_sqes += 1;
-  if ( num_sqes > 64 ) { io_uring_submit(loop->ring); num_sqes = 0; }
-
-}
-
-
-
-int io_uring_enter(unsigned int fd, unsigned int to_submit,
-unsigned int min_complete, unsigned int flags,
-sigset_t sig);
-
-  ret = io_uring_enter(ring->ring_fd, 0, 4, IORING_ENTER_GETEVENTS, NULL);
-
-void mr_write( mr_loop_t *loop, int fd, char *buf, int buflen ) {
-  DBG printf("mrWrite >%.*s<\n", buflen, buf);
-  struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
- 
-  struct iovec *iov = &(loop->iovs[fd]); 
-  iov->iov_base = buf;
-  iov->iov_len = buflen;
-  io_uring_prep_writev(sqe, fd, iov, 1, 0);
-  sqe->user_data = 0;
-  io_uring_submit(loop->ring); 
-}
-
-*/
