@@ -177,8 +177,7 @@ void mr_run( mr_loop_t *loop ) {
     if ( ev->type == TIMER_EV ) {
       uint64_t value;
       int rd = read(ev->fd, &value, 8);
-      ev->tcb();
-      _addTimer(loop, ev);
+      if ( ev->tcb(ev->user_data) ) _addTimer(loop, ev);
     }
     if ( ev->type == LISTEN_EV ) {
       _accept( loop, ev );
@@ -210,7 +209,7 @@ void mr_run( mr_loop_t *loop ) {
     if ( ev->type == TIMER_ONCE_EV ) {
       uint64_t value;
       int rd = read(ev->fd, &value, 8);
-      ev->tcb();
+      ev->tcb(NULL);
       close(ev->fd);
     }
 
@@ -220,7 +219,7 @@ void mr_run( mr_loop_t *loop ) {
   }
 }
 
-int mr_add_timer( mr_loop_t *loop, double seconds, mr_timer_cb *cb ) {
+int mr_add_timer( mr_loop_t *loop, double seconds, mr_timer_cb *cb, void *user_data ) {
 
   int secs, ms;
   secs = ms = 0;
@@ -238,6 +237,7 @@ int mr_add_timer( mr_loop_t *loop, double seconds, mr_timer_cb *cb ) {
   ev->type = TIMER_EV;
   ev->fd = tfd;
   ev->tcb = cb;
+  ev->user_data = user_data;  
 
   _addTimer(loop, ev);
   return 0;

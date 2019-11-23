@@ -44,7 +44,7 @@ typedef struct mr_loop_s {
   //struct iovec iovs[MAX_CONN];
 } mr_loop_t;
 
-typedef void mr_timer_cb();
+typedef int  mr_timer_cb(void *user_data);
 typedef void *mr_accept_cb(int fd, char **buf, int *buflen);
 typedef void mr_read_cb(void *conn, int fd, ssize_t nread, char *buf);
 typedef void mr_signal_cb(int sig);
@@ -70,9 +70,9 @@ void mr_stop(mr_loop_t *loop);
 void mr_run(mr_loop_t *loop);
 
 void mr_add_write_callback( mr_loop_t *loop, mr_write_cb *cb, void *conn, int fd );
-int mr_add_timer( mr_loop_t *loop, double seconds, mr_timer_cb *cb );
-int mr_tcp_server( mr_loop_t *loop, int port, mr_accept_cb *cb, mr_read_cb *rcb);//, char *buf, int buflen );
-int mr_connect( mr_loop_t *loop, char *addr, int port, mr_read_cb *rcb);
+int  mr_add_timer( mr_loop_t *loop, double seconds, mr_timer_cb *cb, void *user_data );
+int  mr_tcp_server( mr_loop_t *loop, int port, mr_accept_cb *cb, mr_read_cb *rcb);//, char *buf, int buflen );
+int  mr_connect( mr_loop_t *loop, char *addr, int port, mr_read_cb *rcb);
 void mr_close(mr_loop_t *loop, int fd);
 
 void mr_flush(mr_loop_t *loop);
