@@ -1,13 +1,13 @@
 
 # MrLoop
 
-Event loop for C using [io_uring](https://github.com/axboe/liburing) which requires linux kernel 5.3+
+Event loop for C using [io_uring](https://github.com/axboe/liburing) which requires linux kernel 5.2+
 
 # Build
 
 ```
-./bld
-sudo ./bld install
+make
+sudo make install
 ```
 
 # Benchmarks
@@ -26,9 +26,9 @@ https://github.com/MarkReedZ/mrcache
 
 ```
 10B gets per second
-  mrcache (iouring) 4.6m
-  redis             1.2m
-  memcached         700k
+  mrcache (io_uring)  4.6m
+  redis               1.2m
+  memcached           700k
 ```
 
 # Usage
@@ -39,9 +39,17 @@ A simple timer.  See more code in examples/
 #include "mrloop.h"
 
 static mr_loop_t *loop = NULL;
+static int cnt = 0;
 
-void on_timer() { 
+// Return 0 to stop the timer
+int on_timer( void *user_data ) {
   printf("tick\n");
+  cnt += 1;
+  if ( cnt > 5 ) {
+    mr_stop(loop);
+    return 0;
+  }
+  return 1;
 }
 
 static void sig_handler(const int sig) {
@@ -49,10 +57,11 @@ static void sig_handler(const int sig) {
   exit(EXIT_SUCCESS);
 }
 
+
 int main() {
 
   loop = mr_create_loop(sig_handler);
-  mr_add_timer(loop, 1, on_timer);
+  mr_add_timer(loop, 0.1, on_timer, NULL);
   mr_run(loop);
   mr_free(loop);
 
