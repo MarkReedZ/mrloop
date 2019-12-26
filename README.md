@@ -1,7 +1,7 @@
 
 # MrLoop
 
-Event loop for C using [io_uring](https://github.com/axboe/liburing) which requires linux kernel 5.3+
+Event loop for C using [io_uring](https://github.com/axboe/liburing) which requires linux kernel 5.4.1+
 
 # Build
 
