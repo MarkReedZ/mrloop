@@ -24,6 +24,7 @@
 #define WRITE_EV 6
 #define TIMER_ONCE_EV 7
 #define READ_CB_EV 8
+#define READV_EV 9
 
 #define MAX_CONN 1024
 
@@ -31,7 +32,7 @@
 typedef struct event_s event_t;
 typedef int  mr_timer_cb(void *user_data);
 typedef void mr_write_cb(void *conn, int fd);
-typedef void mr_write_done_cb(void *user_data);
+typedef void mr_done_cb(void *user_data);
 
 typedef struct mr_time_event {
   uint64_t sec;
@@ -71,7 +72,7 @@ typedef struct event_s {
   mr_accept_cb *acb;  
   mr_read_cb *rcb;
   mr_write_cb *wcb;
-  mr_write_done_cb *wdcb;
+  mr_done_cb *dcb;
   void *user_data;
 
   struct iovec iov;
@@ -95,7 +96,9 @@ void mr_flush(mr_loop_t *loop);
 void mr_write( mr_loop_t *loop, int fd, const void *buf, unsigned nbytes, off_t offset );
 void mr_writev( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt );
 void mr_writevf( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt );
-void mr_writevcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data, mr_write_done_cb *cb );
+void mr_writevcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data, mr_done_cb *cb );
+
+void mr_readvcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data, mr_done_cb *cb );
 
 void mr_call_after( mr_loop_t *loop, mr_timer_cb *cb, uint64_t milliseconds, void *user_data );
 void mr_call_soon(  mr_loop_t *loop, mr_timer_cb *cb, void *user_data );

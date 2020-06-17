@@ -1,5 +1,4 @@
 
-
 #include "mrloop.h"
 #include <netinet/tcp.h>
 #include <netinet/in.h>
@@ -320,7 +319,10 @@ void mr_run( mr_loop_t *loop ) {
         num_sqes = 0;
     }
     if ( ev->type == WRITE_DATA_EV ) {
-      ev->wdcb(ev->user_data);
+      ev->dcb(ev->user_data);
+    }
+    if ( ev->type == READV_EV ) {
+      ev->dcb(ev->user_data);
     }
     if ( ev->type == TIMER_ONCE_EV ) {
       uint64_t value;
@@ -483,17 +485,34 @@ void mr_writevf( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt ) {
 
 }
 
-void mr_writevcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data, mr_write_done_cb *cb ) {
+void mr_writevcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data, mr_done_cb *cb ) {
 
   event_t *ev = malloc( sizeof(event_t) );
   ev->type = WRITE_DATA_EV;
   ev->fd = fd;
-  ev->wdcb = cb;
+  ev->dcb = cb;
   ev->user_data = user_data;
 
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
   io_uring_prep_writev(sqe, fd, iovs, cnt, 0);
   sqe->user_data = (unsigned long)ev;
+  num_sqes += 1;
+  if ( num_sqes > 64 ) { io_uring_submit(loop->ring); num_sqes = 0; }
+
+}
+
+void mr_readvcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data, mr_done_cb *cb ) {
+
+  event_t *ev = malloc( sizeof(event_t) );
+  ev->type = READV_EV;
+  ev->fd = fd;
+  ev->dcb = cb;
+  ev->user_data = user_data;
+
+  struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
+  io_uring_prep_readv(sqe, fd, iovs, cnt, 0);
+  sqe->user_data = (unsigned long)ev;
+
   num_sqes += 1;
   if ( num_sqes > 64 ) { io_uring_submit(loop->ring); num_sqes = 0; }
 
