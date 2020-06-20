@@ -1,4 +1,8 @@
 
+//
+// Echo client that connects to port 12345
+//
+
 #include "mrloop.h"
 
 #define BUFSIZE 64*1024
@@ -13,7 +17,7 @@ void sig_handler(const int sig) {
 
 static int cnt = 0;
 
-void sendSomething(int fd) {
+void send_something(int fd) {
 
   char *p = buf;
   int l = 4;
@@ -29,19 +33,19 @@ void sendSomething(int fd) {
 
 void on_data(void *conn, int fd, ssize_t nread, char *buf) {
   printf(" client on_data: %.*s\n", (int)nread, buf );
-  sendSomething(fd);
+  send_something(fd);
 }
 
 int main() {
 
-  signal(SIGINT, sig_handler);
+  signal(SIGINT,  sig_handler);
   signal(SIGTERM, sig_handler);
 
   loop = mr_create_loop(sig_handler);
   int fd = mr_connect(loop,"localhost", 12345, on_data);
 
   strcpy( buf, "test" );
-  sendSomething(fd);
+  send_something(fd);
 
   mr_run(loop);
   mr_free(loop);

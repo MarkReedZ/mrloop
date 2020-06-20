@@ -7,7 +7,7 @@ int cb( void *user_data ) {
   static int n = 0;
   n += 1;
   printf("tick %d\n",n);
-  if ( n >= 1100 ) {
+  if ( n >= 20 ) {
     mr_stop(loop);
   } else {
     mr_call_soon(loop, cb, NULL);

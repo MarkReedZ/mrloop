@@ -29,10 +29,14 @@
 #define MAX_CONN 1024
 
 
-typedef struct event_s event_t;
+typedef struct mr_event_s mr_event_t;
+
+typedef void *mr_accept_cb(int fd, char **buf, int *buflen);
 typedef int  mr_timer_cb(void *user_data);
 typedef void mr_write_cb(void *conn, int fd);
 typedef void mr_done_cb(void *user_data);
+typedef void mr_read_cb(void *conn, int fd, ssize_t nread, char *buf);
+typedef void mr_signal_cb(int sig);
 
 typedef struct mr_time_event {
   uint64_t sec;
@@ -48,26 +52,21 @@ typedef struct mr_loop_s {
   int stop;
   int fd;
   struct io_uring *ring;
-  event_t *readEvents[MAX_CONN];
-  event_t *readDataEvents[MAX_CONN];
-  //event_t *writeEvents[MAX_CONN];
-  //event_t *writeDataEvents[MAX_CONN];
-  event_t *writeDataEvent;
-  mr_write_cb *writeCallback;
-  //struct iovec iovs[MAX_CONN];
+  mr_event_t *read_events[MAX_CONN];
+  mr_event_t *read_data_events[MAX_CONN];
+  //mr_event_t *write_events[MAX_CONN];
+  //mr_event_t *write_data_events[MAX_CONN];
+  mr_event_t *write_data_event;
   int timer_fd;
   mr_time_event_t *thead;
-  event_t *timerEvent;
+  mr_event_t *timer_event;
 } mr_loop_t;
 
-typedef void *mr_accept_cb(int fd, char **buf, int *buflen);
-typedef void mr_read_cb(void *conn, int fd, ssize_t nread, char *buf);
-typedef void mr_signal_cb(int sig);
 
-typedef struct event_s {
+typedef struct mr_event_s {
   int type;
   int fd;
-  // TODO union
+  // TODO union?
   mr_timer_cb *tcb;  
   mr_accept_cb *acb;  
   mr_read_cb *rcb;
@@ -77,9 +76,10 @@ typedef struct event_s {
 
   struct iovec iov;
 
-} event_t;
+} mr_event_t;
 
 mr_loop_t *mr_create_loop();
+
 void mr_free(mr_loop_t *loop);
 void mr_stop(mr_loop_t *loop);
 void mr_run(mr_loop_t *loop);
@@ -98,7 +98,7 @@ void mr_writev( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt );
 void mr_writevf( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt );
 void mr_writevcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data, mr_done_cb *cb );
 
-void mr_readvcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data, mr_done_cb *cb );
+void mr_readvcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, off_t offset, void *user_data, mr_done_cb *cb );
 
 void mr_call_after( mr_loop_t *loop, mr_timer_cb *cb, uint64_t milliseconds, void *user_data );
 void mr_call_soon(  mr_loop_t *loop, mr_timer_cb *cb, void *user_data );

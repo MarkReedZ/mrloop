@@ -8,8 +8,6 @@
 #include <netdb.h>
 #include <time.h>
 
-#define DBG if(0)
-
 static int mrfd;
 static char tmp[32*1024];
 static int tmplen = 32*1024;
@@ -27,9 +25,9 @@ static void print_buffer( char* b, int len ) {
 
 mr_loop_t *mr_create_loop(mr_signal_cb *sig) {
 
-  signal(SIGINT, sig);
+  signal(SIGINT,  sig);
   signal(SIGTERM, sig);
-  signal(SIGHUP, sig);
+  signal(SIGHUP,  sig);
   signal(SIGPIPE, SIG_IGN);
 
   mr_loop_t *loop = calloc( 1, sizeof(mr_loop_t) );
@@ -43,20 +41,20 @@ mr_loop_t *mr_create_loop(mr_signal_cb *sig) {
   loop->timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
   if (loop->timer_fd < 0) { perror("timerfd_create"); return NULL; }
   loop->thead = NULL;
-  loop->timerEvent = calloc( 1, sizeof(event_t) );
-  loop->timerEvent->type = TIMER_EV;
+  loop->timer_event = calloc( 1, sizeof(mr_event_t) );
+  loop->timer_event->type = TIMER_EV;
 
   loop->fd = loop->ring->ring_fd;
-  loop->writeDataEvent = calloc( 1, sizeof(event_t) );
-  loop->writeDataEvent->type = WRITE_DATA_EV;
+  loop->write_data_event = calloc( 1, sizeof(mr_event_t) );
+  loop->write_data_event->type = WRITE_DATA_EV;
   for (int i = 0; i < MAX_CONN; i++) {
-    loop->readEvents[i] = calloc( 1, sizeof(event_t) );
-    loop->readDataEvents[i] = calloc( 1, sizeof(event_t) );
-    loop->readEvents[i]->type = READ_EV;
-    loop->readDataEvents[i]->type = READ_DATA_EV;
+    loop->read_events[i] = calloc( 1, sizeof(mr_event_t) );
+    loop->read_data_events[i] = calloc( 1, sizeof(mr_event_t) );
+    loop->read_events[i]->type = READ_EV;
+    loop->read_data_events[i]->type = READ_DATA_EV;
 
-    //loop->writeEvents[i] = calloc( 1, sizeof(event_t) );
-    //loop->writeEvents[i]->type = WRITE_EV;
+    //loop->write_events[i] = calloc( 1, sizeof(mr_event_t) );
+    //loop->write_events[i]->type = WRITE_EV;
   }
 
   return loop;
@@ -65,20 +63,19 @@ mr_loop_t *mr_create_loop(mr_signal_cb *sig) {
 
 void mr_free(mr_loop_t *loop) {
   free(loop->ring);
-  free(loop->writeDataEvent);
+  free(loop->write_data_event);
   for (int i = 0; i < MAX_CONN; i++) {
-    free(loop->readEvents[i]);
-    free(loop->readDataEvents[i]);
+    free(loop->read_events[i]);
+    free(loop->read_data_events[i]);
   }
   free(loop); 
 }
 
 void mr_stop(mr_loop_t *loop) {
   loop->stop = 1;
-  //printf("ELMELOOP mr_stop called\n");
 }
 
-void _urpoll( mr_loop_t *loop, int fd, event_t *ev ) {
+void _urpoll( mr_loop_t *loop, int fd, mr_event_t *ev ) {
 
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
   io_uring_prep_poll_add( sqe, fd, POLLIN );
@@ -89,7 +86,7 @@ void _urpoll( mr_loop_t *loop, int fd, event_t *ev ) {
 
 void mr_add_write_callback( mr_loop_t *loop, mr_write_cb *cb, void *conn, int fd ) {
 
-  event_t *ev  = calloc( 1, sizeof(event_t) );
+  mr_event_t *ev  = calloc( 1, sizeof(mr_event_t) );
   ev->type = WRITE_EV;
   ev->fd = fd;
   ev->user_data = conn;
@@ -103,7 +100,7 @@ void mr_add_write_callback( mr_loop_t *loop, mr_write_cb *cb, void *conn, int fd
 }
 void mr_add_read_callback( mr_loop_t *loop, mr_write_cb *cb, void *conn, int fd ) {
 
-  event_t *ev  = calloc( 1, sizeof(event_t) );
+  mr_event_t *ev  = calloc( 1, sizeof(mr_event_t) );
   ev->type = READ_CB_EV;
   ev->fd = fd;
   ev->user_data = conn;
@@ -116,7 +113,7 @@ void mr_add_read_callback( mr_loop_t *loop, mr_write_cb *cb, void *conn, int fd 
   
 }
 
-void _addTimer( mr_loop_t *loop, event_t *ev ) {
+void _addTimer( mr_loop_t *loop, mr_event_t *ev ) {
 
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
   if (!sqe) { printf("child: get sqe failed\n"); return; }
@@ -126,8 +123,9 @@ void _addTimer( mr_loop_t *loop, event_t *ev ) {
 }
 
 
-void _read( mr_loop_t *loop, event_t *ev ) {
-  event_t *rdev = loop->readDataEvents[ev->fd];
+void _read( mr_loop_t *loop, mr_event_t *ev ) {
+
+  mr_event_t *rdev = loop->read_data_events[ev->fd];
 
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
   io_uring_prep_readv(sqe, rdev->fd, &(rdev->iov), 1, 0);
@@ -138,8 +136,7 @@ void _read( mr_loop_t *loop, event_t *ev ) {
 }
 
 // TODO use 5.5 async accept4 with SOCK_NONBLOCK
-void _accept( mr_loop_t *loop, event_t *ev ) {
-
+void _accept( mr_loop_t *loop, mr_event_t *ev ) {
 
   struct sockaddr_in addr;
   socklen_t len;
@@ -160,8 +157,8 @@ void _accept( mr_loop_t *loop, event_t *ev ) {
     ev->user_data = ev->acb( cfd, &buf, &buflen);
 
     // Setup the read event
-    event_t *rev  = loop->readEvents[cfd];
-    event_t *rdev = loop->readDataEvents[cfd];
+    mr_event_t *rev  = loop->read_events[cfd];
+    mr_event_t *rdev = loop->read_data_events[cfd];
     rev->fd = cfd;
     //rev->user_data = ev->user_data;
     rdev->fd = cfd;
@@ -171,8 +168,8 @@ void _accept( mr_loop_t *loop, event_t *ev ) {
     rdev->iov.iov_len = buflen;
     _urpoll( loop, cfd, rev );
 
-    //readCompleteEvents[cfd].fd = cfd;
-    //readCompleteEvents[cfd].cb = on_read_complete;
+    //read_complete_events[cfd].fd = cfd;
+    //read_complete_events[cfd].cb = on_read_complete;
 
   } else {
     printf( " mrloop: _accept - error: %s\n", strerror(errno) );
@@ -183,49 +180,27 @@ void _accept( mr_loop_t *loop, event_t *ev ) {
 
 }
 
-static int numtes = 0; // DELME
 static void mr_process_time_event( mr_loop_t *loop ) {
   mr_time_event_t *te = loop->thead;
   if ( te == NULL ) return;
 
-  numtes -= 1;
-  //printf("DELME mr_process_time_event num %d\n",numtes);
   te->cb(te->user_data);
 
   loop->thead = te->next;
-  //  
-  //te->cb = func;
-  //te->user_data = user_data;
 
 }
 
 // TODO if this is negative then consume the entry
 static void *mr_set_timeout( mr_loop_t *loop, struct __kernel_timespec *ts ) {
 
-  //printf("DELME mr_set_timeout\n");
   mr_time_event_t *te = loop->thead;
-  //if ( te == NULL ) printf("DELME mr_set_timeout te null\n");
   if ( te == NULL ) return NULL;
 
   struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
 
-/*
-  printf("DELME now: %ld %ld\n",now.tv_sec,now.tv_nsec);
-  int n = 0;
-  while (te) {
-    printf("DELME te%d: %ld %ld\n",n,te->sec,te->ms);
-    n += 1;
-    te = te->next;
-  }
-  te = loop->thead;
-*/
-
-  //printf("DELME mr_set_timeout te %ld %ld\n",te->sec,te->ms);
   long sec = te->sec - now.tv_sec;
   long ms  = te->ms  - now.tv_nsec/1e6;
-  //printf("DELME mr_set_timeout %ld %ld\n",sec,ms);
 
-  //if ( sec < 0 || (sec == 0 && ms < 0) ) { printf(" mr set timeout found neg time\n"); }
   if ( sec < 0 || (sec == 0 && ms <= 0) ) { mr_process_time_event( loop ); mr_set_timeout( loop, ts ); return loop->thead; }
 
   ts->tv_sec  = sec;
@@ -235,7 +210,6 @@ static void *mr_set_timeout( mr_loop_t *loop, struct __kernel_timespec *ts ) {
   }
   else ts->tv_nsec = ms * 1e6;
  
-  //printf("DELME mr_set_timeout returning %p\n",te);
   return te;
 }
 
@@ -245,9 +219,7 @@ void mr_run( mr_loop_t *loop ) {
   
   while ( 1 ) {
 
-    //printf("ELMELOOP top of loop\n");
     if ( loop->stop ) return;
-    //TODO wait_cqe returns nonzero on error
 
     // Check for waiting time events
     if ( loop->thead ) {
@@ -257,15 +229,12 @@ void mr_run( mr_loop_t *loop ) {
       if ( mr_set_timeout( loop, &ts ) ) {
         if ( loop->stop ) return;
     	  io_uring_wait_cqe_timeout(loop->ring, &cqe, &ts);
-        //printf("ELMELOOP te - after wait_cqe_timeout\n");
       } else {
         if ( loop->stop ) return;
-    	  io_uring_wait_cqe(loop->ring, &cqe);
-        //printf("ELMELOOP te - after wait_cqe\n");
+    	  io_uring_wait_cqe(loop->ring, &cqe); //TODO wait_cqe returns nonzero on error
       }
     } else {
     	io_uring_wait_cqe(loop->ring, &cqe);
-      //printf("ELMELOOP after wait_cqe\n");
     }
 
     if ( !cqe ) {
@@ -275,7 +244,7 @@ void mr_run( mr_loop_t *loop ) {
       continue; 
     }
 
-    event_t *ev = (event_t*)cqe->user_data;
+    mr_event_t *ev = (mr_event_t*)cqe->user_data;
     if ( !ev ) {
       io_uring_cqe_seen(loop->ring, cqe);
       continue; 
@@ -302,27 +271,25 @@ void mr_run( mr_loop_t *loop ) {
     }
     if ( ev->type == READ_DATA_EV ) {
 
-        //printf("ELMELOOP read data before res %d\n",cqe->res);
         // TODO Allow user to return a value saying close this?
         //      I think we add a close callback and we close.
         ev->rcb( ev->user_data, ev->fd, cqe->res, ev->iov.iov_base );
         if ( loop->stop ) return;
-        //_urpoll( loop, ev->fd, loop->readEvents[ev->fd] );
         if ( cqe->res > 0 ) {
-          _urpoll( loop, ev->fd, loop->readEvents[ev->fd] );
-          //printf("ELMELOOP read data res %d\n",cqe->res);
+          _urpoll( loop, ev->fd, loop->read_events[ev->fd] );
         } else {
-          //printf("ELMELOOP read data res 0\n");
           // User will call close? Do we need to free anything? TODO
         }
-        //io_uring_submit(loop->ring);  // poll submits
+        //io_uring_submit(loop->ring);
         num_sqes = 0;
     }
     if ( ev->type == WRITE_DATA_EV ) {
       ev->dcb(ev->user_data);
+      free(ev);
     }
     if ( ev->type == READV_EV ) {
       ev->dcb(ev->user_data);
+      free(ev);
     }
     if ( ev->type == TIMER_ONCE_EV ) {
       uint64_t value;
@@ -353,7 +320,7 @@ int mr_add_timer( mr_loop_t *loop, double seconds, mr_timer_cb *cb, void *user_d
   if (tfd < 0) { perror("timerfd_create"); return -1; }
   if (timerfd_settime(tfd, 0, &exp, NULL)) { perror("timerfd_settime"); close(tfd); return -1; }
   
-  event_t *ev = malloc( sizeof(event_t) );
+  mr_event_t *ev = malloc( sizeof(mr_event_t) );
   ev->type = TIMER_EV;
   ev->fd = tfd;
   ev->tcb = cb;
@@ -393,8 +360,8 @@ int mr_tcp_server( mr_loop_t *loop, int port, mr_accept_cb *cb, mr_read_cb *rcb)
       exit(EXIT_FAILURE);
   }
 
-  // TODO free this in mr_free(loop)
-  event_t *ev = malloc( sizeof(event_t) );
+  // TODO free this in mr_free(loop) - we need a free list
+  mr_event_t *ev = malloc( sizeof(mr_event_t) );
   ev->type = LISTEN_EV;
   ev->fd = listen_fd;
   ev->acb = cb;
@@ -424,9 +391,8 @@ int mr_connect( mr_loop_t *loop, char *addr, int port, mr_read_cb *rcb) {
 
     he = gethostbyname(addr);
     if (he == NULL) {
-      //anetSetError(err, "can't resolve: %s\n", addr);
+      printf("Error resolving addr: %s\n", addr);
       close(fd);
-      //return ANET_ERR;
       return -1;
     }
     memcpy(&sa.sin_addr, he->h_addr, sizeof(struct in_addr));
@@ -440,8 +406,8 @@ int mr_connect( mr_loop_t *loop, char *addr, int port, mr_read_cb *rcb) {
   }
 
   // Setup the read event
-  event_t *rev  = loop->readEvents[fd];
-  event_t *rdev = loop->readDataEvents[fd];
+  mr_event_t *rev  = loop->read_events[fd];
+  mr_event_t *rdev = loop->read_data_events[fd];
   rev->fd = fd;
   rev->user_data = 0;
   _urpoll( loop, fd, rev );
@@ -487,7 +453,7 @@ void mr_writevf( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt ) {
 
 void mr_writevcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data, mr_done_cb *cb ) {
 
-  event_t *ev = malloc( sizeof(event_t) );
+  mr_event_t *ev = malloc( sizeof(mr_event_t) );
   ev->type = WRITE_DATA_EV;
   ev->fd = fd;
   ev->dcb = cb;
@@ -501,24 +467,22 @@ void mr_writevcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *us
 
 }
 
-void mr_readvcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, void *user_data, mr_done_cb *cb ) {
+void mr_readvcb( mr_loop_t *loop, int fd, struct iovec *iovs, int cnt, off_t offset, void *user_data, mr_done_cb *cb ) {
 
-  event_t *ev = malloc( sizeof(event_t) );
+  mr_event_t *ev = malloc( sizeof(mr_event_t) );
   ev->type = READV_EV;
   ev->fd = fd;
   ev->dcb = cb;
   ev->user_data = user_data;
 
   struct io_uring_sqe *sqe = io_uring_get_sqe(loop->ring);
-  io_uring_prep_readv(sqe, fd, iovs, cnt, 0);
+  io_uring_prep_readv(sqe, fd, iovs, cnt, offset);
   sqe->user_data = (unsigned long)ev;
 
   num_sqes += 1;
   if ( num_sqes > 64 ) { io_uring_submit(loop->ring); num_sqes = 0; }
 
 }
-
-//static inline void io_uring_prep_write_fixed(struct io_uring_sqe *sqe, int fd, const void *buf, unsigned nbytes, off_t offset, int buf_index)
 
 void mr_write( mr_loop_t *loop, int fd, const void *buf, unsigned nbytes, off_t offset ) {
 
@@ -534,9 +498,6 @@ void mr_write( mr_loop_t *loop, int fd, const void *buf, unsigned nbytes, off_t 
 // TODO Insert from back since later events should be later times
 static void mr_insert_time_event( mr_loop_t *loop, mr_time_event_t *te ) {
 
-  //numtes += 1;
-  //printf("mr_insert_time_event num %d\n",numtes);
-  //if ( loop->thead == NULL ) { printf("mr_insert to head\n"); }
   if ( loop->thead == NULL ) { loop->thead = te; return; }
 
   mr_time_event_t *n = loop->thead;
@@ -570,9 +531,6 @@ void mr_call_after( mr_loop_t *loop, mr_timer_cb *func, uint64_t milliseconds, v
     te->sec += 1; te->ms -= 1000;
   }
 
-  //printf(" nowsec %d tsec %d \n", t.tv_sec, te->sec );
-  //printf(" nowms %d tms %d huh %d \n", t.tv_nsec/1e6, te->ms,(milliseconds%1000));
-
   // Insert it into the LL in time order
   mr_insert_time_event( loop, te );    
 
@@ -585,14 +543,13 @@ void mr_call_soon( mr_loop_t *loop, mr_timer_cb *cb, void *user_data ) {
   te->cb = cb;
   te->user_data = user_data;
 
-  // Now 
-	struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
+  // Now ?
+	//struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
   //te->sec = t.tv_sec;
   //te->ms  = t.tv_nsec/1e6;
   te->sec = 0;
   te->ms  = 0;
 
-  //printf("DELME bef insert\n");
   mr_insert_time_event( loop, te );    
 
 }

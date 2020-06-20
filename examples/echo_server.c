@@ -1,4 +1,8 @@
 
+//
+// Echo server that listens on port 12345
+//
+
 #include "mrloop.h"
 
 #define BUFSIZE 64*1024

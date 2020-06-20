@@ -21,7 +21,7 @@ int main() {
 
   loop = mr_create_loop(sig_handler);
   mr_call_after(loop, cb, 1000, NULL);
-  mr_run(loop);
+  mr_run(loop); // Returns after mr_stop is called
   mr_free(loop);
 
 }
