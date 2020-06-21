@@ -5,6 +5,8 @@ Event loop for C using [io_uring](https://github.com/axboe/liburing) which requi
 
 # Build
 
+Install [liburing](https://github.com/axboe/liburing)
+
 ```
 make
 sudo make install
@@ -26,8 +28,8 @@ https://github.com/MarkReedZ/mrcache
 
 ```
 10B gets per second
-  mrcache (io_uring)  4.6m
-  redis               1.2m
+  mrcache (io_uring)  5.7m
+  redis               1.3m
   memcached           700k
 ```
 
