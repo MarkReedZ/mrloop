@@ -24,7 +24,7 @@ Echo server ( examples/echo_server.c )
 
 ```
 
-https://github.com/MarkReedZ/mrcache
+A key value store https://github.com/MarkReedZ/mrcache
 
 ```
 10B gets per second
