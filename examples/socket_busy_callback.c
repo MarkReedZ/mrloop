@@ -31,7 +31,7 @@ void sendSomething(int fd) {
 
 }
 
-void on_data(void *conn, int fd, ssize_t nread, char *buf) { }
+int on_data(void *conn, int fd, ssize_t nread, char *buf) { }
 
 int main() {
 

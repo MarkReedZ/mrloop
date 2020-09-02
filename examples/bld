@@ -1,12 +1,12 @@
 
 CFLAGS='-O3'
 
-gcc echo_server.c -I ../ -L.. -lmrloop -luring -o echo_server ${CFLAGS}
-gcc echo_client.c -I ../ -L.. -lmrloop -luring -o echo_client ${CFLAGS}
-gcc timer.c -I ../ -L.. -lmrloop -luring -o timer ${CFLAGS}
-gcc call_soon.c -I ../ -L.. -lmrloop -luring -o call_soon ${CFLAGS}
-gcc call_later.c -I ../ -L.. -lmrloop -luring -o call_later ${CFLAGS}
-gcc write_done.c -I ../ -L.. -lmrloop -luring -o write_done ${CFLAGS}
-gcc socket_busy_callback.c -I ../ -L.. -lmrloop -luring -o socket_busy_callback ${CFLAGS}
-gcc read_file.c -I ../ -L.. -lmrloop -luring -o read_file ${CFLAGS}
+gcc echo_server.c -I ../ -L.. -lmrloop -o echo_server ${CFLAGS}
+gcc echo_client.c -I ../ -L.. -lmrloop -o echo_client ${CFLAGS}
+gcc timer.c -I ../ -L.. -lmrloop -o timer ${CFLAGS}
+gcc call_soon.c -I ../ -L.. -lmrloop -o call_soon ${CFLAGS}
+gcc call_later.c -I ../ -L.. -lmrloop -o call_later ${CFLAGS}
+gcc write_done.c -I ../ -L.. -lmrloop -o write_done ${CFLAGS}
+gcc socket_busy_callback.c -I ../ -L.. -lmrloop -o socket_busy_callback ${CFLAGS}
+gcc read_file.c -I ../ -L.. -lmrloop -o read_file ${CFLAGS}
 

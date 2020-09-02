@@ -62,12 +62,14 @@ mr_loop_t *mr_create_loop(mr_signal_cb *sig) {
 
 
 void mr_free(mr_loop_t *loop) {
+  io_uring_queue_exit(loop->ring);
   free(loop->ring);
   free(loop->write_data_event);
   for (int i = 0; i < MAX_CONN; i++) {
     free(loop->read_events[i]);
     free(loop->read_data_events[i]);
   }
+
   free(loop); 
 }
 
@@ -135,7 +137,7 @@ void _read( mr_loop_t *loop, mr_event_t *ev ) {
 
 }
 
-// TODO use 5.5 async accept4 with SOCK_NONBLOCK
+// TODO use 5.5 async accept4 with SOCK_NONBLOCK?
 void _accept( mr_loop_t *loop, mr_event_t *ev ) {
 
   struct sockaddr_in addr;
@@ -271,16 +273,18 @@ void mr_run( mr_loop_t *loop ) {
     }
     if ( ev->type == READ_DATA_EV ) {
 
-        // TODO Allow user to return a value saying close this?
-        //      I think we add a close callback and we close.
-        ev->rcb( ev->user_data, ev->fd, cqe->res, ev->iov.iov_base );
-        if ( loop->stop ) return;
-        if ( cqe->res > 0 ) {
-          _urpoll( loop, ev->fd, loop->read_events[ev->fd] );
+        int rc = ev->rcb( ev->user_data, ev->fd, cqe->res, ev->iov.iov_base );
+        if ( rc ) { 
+          mr_close( loop, ev->fd );
         } else {
-          // User will call close? Do we need to free anything? TODO
+          if ( loop->stop ) return;
+          if ( cqe->res > 0 ) {
+            _urpoll( loop, ev->fd, loop->read_events[ev->fd] );
+          } else {
+            mr_close( loop, ev->fd );
+          }
+          //io_uring_submit(loop->ring);
         }
-        //io_uring_submit(loop->ring);
         num_sqes = 0;
     }
     if ( ev->type == WRITE_DATA_EV ) {

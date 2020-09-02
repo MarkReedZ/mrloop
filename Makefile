@@ -16,10 +16,12 @@ mrloop.o: mrloop.c
 	$(CC) $(CFLAGS) -c mrloop.c -o mrloop.o $(LIBS)
 
 libmrloop.a: mrloop.o
-	ar crs libmrloop.a mrloop.o 
+	ar -x /usr/lib/liburing.a
+	ar crs libmrloop.a mrloop.o *.ol
+	rm *.ol
 
 clean:
-	-rm -f *.o
+	-rm -f *.o *.ol
 
 install: libmrloop.a
 	install -d $(PREFIX)/lib/

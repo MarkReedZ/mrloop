@@ -31,7 +31,7 @@ void send_something(int fd) {
 
 }
 
-void on_data(void *conn, int fd, ssize_t nread, char *buf) {
+int on_data(void *conn, int fd, ssize_t nread, char *buf) {
   printf(" client on_data: %.*s\n", (int)nread, buf );
   send_something(fd);
 }

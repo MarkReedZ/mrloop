@@ -35,7 +35,7 @@ typedef void *mr_accept_cb(int fd, char **buf, int *buflen);
 typedef int  mr_timer_cb(void *user_data);
 typedef void mr_write_cb(void *conn, int fd);
 typedef void mr_done_cb(void *user_data);
-typedef void mr_read_cb(void *conn, int fd, ssize_t nread, char *buf);
+typedef int  mr_read_cb(void *conn, int fd, ssize_t nread, char *buf);
 typedef void mr_signal_cb(int sig);
 
 typedef struct mr_time_event {

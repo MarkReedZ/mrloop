@@ -26,7 +26,7 @@ void sendSomething(int fd) {
   mr_flush(loop);
 }
 
-void on_data(void *conn, int fd, ssize_t nread, char *buf) { }
+int on_data(void *conn, int fd, ssize_t nread, char *buf) { }
 
 int main() {
 

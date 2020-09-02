@@ -24,8 +24,16 @@ void *setup_conn(int fd, char **buf, int *buflen ) {
   return conn;
 }
 
-void on_data(void *conn, int fd, ssize_t nread, char *buf) {
+int on_data(void *conn, int fd, ssize_t nread, char *buf) {
   conn_t *c = conn;
+  
+  // The client closed the connection
+  if ( nread == 0 ) { 
+    mr_close( loop, c->fd );
+    free(c);
+    return;
+  }
+
   c->iov.iov_base = buf;
   c->iov.iov_len = nread;
   mr_writev( loop, ((conn_t*)conn)->fd, &(c->iov), 1 );
