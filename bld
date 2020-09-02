@@ -20,7 +20,7 @@ if [ "$1" == "tests" ]; then
 fi
 
 if [ "$1" == "install" ]; then
-  ar crs libmrloop.a mrloop.o /usr/local/lib/liburing.a
+  ar crs libmrloop.a mrloop.o /usr/lib/liburing.a
   mv libmrloop.a /usr/local/lib
   cp mrloop.h /usr/local/include
 fi
