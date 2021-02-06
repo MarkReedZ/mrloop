@@ -145,7 +145,7 @@ void _accept( mr_loop_t *loop, mr_event_t *ev ) {
   int cfd = accept(ev->fd, (struct sockaddr*)&addr, &len);
 
   if (fcntl(cfd, F_SETFL, fcntl(cfd, F_GETFD,0) | O_NONBLOCK) == -1) {
-    printf("set non blocking error : %d %s...\n", errno, strerror(errno));
+    printf("mrloop: _accept set non blocking error : %d %s...\n", errno, strerror(errno));
     exit(EXIT_FAILURE);
   }
 
