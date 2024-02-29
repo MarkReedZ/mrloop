@@ -27,10 +27,10 @@ Echo server ( examples/echo_server.c )
 A key value store https://github.com/MarkReedZ/mrcache
 
 ```
-10B gets per second
-  mrcache (io_uring)  5.7m
-  redis               1.3m
-  memcached           700k
+get 16B key ( reads/sec )
+  mrcache        9.8m
+  redis          2.7m
+  memcached      400k
 ```
 
 # Usage
