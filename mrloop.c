@@ -141,17 +141,21 @@ void _read( mr_loop_t *loop, mr_event_t *ev ) {
 void _accept( mr_loop_t *loop, mr_event_t *ev ) {
 
   struct sockaddr_in addr;
-  socklen_t len;
+  socklen_t len = sizeof(struct sockaddr);
   int cfd = accept(ev->fd, (struct sockaddr*)&addr, &len);
+  if ( cfd == -1 ) {
+    printf("mrloop: _accept error : %d %s...\n", errno, strerror(errno));
+    printf("   ev fd %d\n",ev->fd);
+    exit(EXIT_FAILURE);
+  }
 
   if (fcntl(cfd, F_SETFL, fcntl(cfd, F_GETFD,0) | O_NONBLOCK) == -1) {
     printf("mrloop: _accept set non blocking error : %d %s...\n", errno, strerror(errno));
+    printf("    cfd %d ev fd %d\n",cfd,ev->fd);
     exit(EXIT_FAILURE);
   }
 
   if (cfd != -1) {
-  //while ((cfd = accept(ev->fd, (struct sockaddr*)&addr, &len)) != -1) {
-    //if (cfd >= MAX_CONN) { close(cfd); break; }
 
     mrfd = cfd;
     char *buf;
@@ -288,11 +292,11 @@ void mr_run( mr_loop_t *loop ) {
         num_sqes = 0;
     }
     if ( ev->type == WRITE_DATA_EV ) {
-      ev->dcb(ev->user_data);
+      ev->dcb(ev->user_data, cqe->res);
       free(ev);
     }
     if ( ev->type == READV_EV ) {
-      ev->dcb(ev->user_data);
+      ev->dcb(ev->user_data, 0);
       free(ev);
     }
     if ( ev->type == TIMER_ONCE_EV ) {
@@ -355,12 +359,12 @@ int mr_tcp_server( mr_loop_t *loop, int port, mr_accept_cb *cb, mr_read_cb *rcb)
   //if (error != 0) perror("setsockopt");
 
   if (bind(listen_fd, (struct sockaddr*)&servaddr, sizeof(struct sockaddr)) == -1) {
-      printf("bind error : %d ...\n", errno);
+      printf("bind error : %d %s...\n", errno, strerror(errno));
       exit(EXIT_FAILURE);
   }
 
   if (listen(listen_fd, 32) == -1) {
-      printf("listen error : %d ...\n", errno);
+      printf("listen error : %d %s...\n", errno, strerror(errno));
       exit(EXIT_FAILURE);
   }
 

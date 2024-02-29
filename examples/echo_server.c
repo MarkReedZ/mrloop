@@ -31,12 +31,14 @@ int on_data(void *conn, int fd, ssize_t nread, char *buf) {
   if ( nread == 0 ) { 
     mr_close( loop, c->fd );
     free(c);
-    return;
+    return 1;
   }
+  //printf("DELME nread %d\n",nread);
 
   c->iov.iov_base = buf;
   c->iov.iov_len = nread;
   mr_writev( loop, ((conn_t*)conn)->fd, &(c->iov), 1 );
+  return 0;
 }
 
 static void sig_handler(const int sig) {

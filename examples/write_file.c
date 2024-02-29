@@ -6,7 +6,7 @@
 
 static mr_loop_t *loop = NULL;
 
-void on_write_done(void *user_data) {
+void on_write_done(void *user_data, int res) {
 
     struct iovec *iov = (struct iovec*)user_data;
     printf("on_write_done - the file delme was written\n");

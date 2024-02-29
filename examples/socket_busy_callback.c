@@ -15,7 +15,7 @@ static char buf[BUFSIZE];
 
 void can_write( void *conn, int fd ) {
   int l = BUFSIZE;
-  int nwritten = write(fd,buf,l);
+  int nwritten = write(fd,buf,1024);
   printf("can_write nwritten %d\n",nwritten);
   exit(-1);
 }
@@ -25,7 +25,7 @@ void sendSomething(int fd) {
   int l = BUFSIZE;
   int nwritten = write(fd,buf,l);
   printf("First nwritten %d\n",nwritten);
-  nwritten = write(fd,buf,l);
+  nwritten = write(fd,buf,1024);
   printf("Second nwritten %d\n",nwritten);
   mr_add_write_callback( loop, can_write, NULL, fd );  
 

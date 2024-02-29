@@ -1,19 +1,19 @@
 
+// mr_writevcb example.  The echo_server needs to be running.  
+
+
 #include "mrloop.h"
 
 #define BUFSIZE 16*1024
-
 static mr_loop_t *loop = NULL;
 static char buf[BUFSIZE];
 
-typedef struct _conn
-{
-  int fd;
-  char buf[BUFSIZE];
-} conn_t;
+void on_write_done(void *user_data, int res) {
 
-void on_write_done(void *user_data) {
-  printf("on_write_done - %ld\n", (unsigned long)user_data);
+  printf("on_write_done - res %d user_data %ld\n", res, (unsigned long)user_data);
+  if ( res < 0 ) {
+    printf(" err: %s\n",strerror(-res));
+  }
   exit(0);
 }
 

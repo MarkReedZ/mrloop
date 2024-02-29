@@ -7,7 +7,7 @@
 static mr_loop_t *loop = NULL;
 static int cnt = 0;
 
-void on_read_done(void *user_data) {
+void on_read_done(void *user_data, int res) {
 
   struct iovec *iov = (struct iovec*)user_data;
   printf("on_read_done\n  Read: %.*s", 15, (char*)(iov->iov_base));
