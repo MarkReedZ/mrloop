@@ -33,8 +33,8 @@ int on_data(void *conn, int fd, ssize_t nread, char *buf) {
     free(c);
     return 1;
   }
-  //printf("DELME nread %d\n",nread);
 
+  // Echo it back
   c->iov.iov_base = buf;
   c->iov.iov_len = nread;
   mr_writev( loop, ((conn_t*)conn)->fd, &(c->iov), 1 );
