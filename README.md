@@ -33,6 +33,13 @@ get 16B key ( reads/sec )
   memcached      400k
 ```
 
+Against go's gnet echo server:  https://github.com/gnet-io/gnet-benchmarks
+
+```
+  mrloop   2,128,669 R/s
+  gnet     2,438,766 R/s
+```
+
 # Usage
 
 A simple timer.  See more code in examples/
