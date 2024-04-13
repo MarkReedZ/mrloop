@@ -1,4 +1,5 @@
 
+
 #include "mrloop.h"
 #include <netinet/tcp.h>
 #include <netinet/in.h>
@@ -380,7 +381,7 @@ int mr_tcp_server( mr_loop_t *loop, int port, mr_accept_cb *cb, mr_read_cb *rcb)
   return 0;
 }
 
-int mr_connect( mr_loop_t *loop, char *addr, int port, mr_read_cb *rcb) {
+int mr_connect( mr_loop_t *loop, const char *addr, int port, mr_read_cb *rcb) {
 
   int fd, ret, on = 1;
   struct sockaddr_in sa;

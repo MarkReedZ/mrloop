@@ -1,6 +1,12 @@
 
 #pragma once
 
+#include "liburing.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <netinet/in.h>
 #include <fcntl.h> 
 #include <stdbool.h>
@@ -14,7 +20,6 @@
 #include <sys/poll.h>
 #include <sys/uio.h>
 
-#include "liburing.h"
 
 #define TIMER_EV 1
 #define LISTEN_EV 2
@@ -78,7 +83,7 @@ typedef struct mr_event_s {
 
 } mr_event_t;
 
-mr_loop_t *mr_create_loop();
+mr_loop_t *mr_create_loop(mr_signal_cb *sig);
 
 void mr_free(mr_loop_t *loop);
 void mr_stop(mr_loop_t *loop);
@@ -89,7 +94,7 @@ void mr_add_read_callback ( mr_loop_t *loop, mr_write_cb *cb, void *conn, int fd
 
 int  mr_add_timer( mr_loop_t *loop, double seconds, mr_timer_cb *cb, void *user_data );
 int  mr_tcp_server( mr_loop_t *loop, int port, mr_accept_cb *cb, mr_read_cb *rcb);//, char *buf, int buflen );
-int  mr_connect( mr_loop_t *loop, char *addr, int port, mr_read_cb *rcb);
+int  mr_connect( mr_loop_t *loop, const char *addr, int port, mr_read_cb *rcb);
 void mr_close(mr_loop_t *loop, int fd);
 
 void mr_flush(mr_loop_t *loop);
@@ -106,4 +111,6 @@ void mr_call_soon(  mr_loop_t *loop, mr_timer_cb *cb, void *user_data );
 
 
 
-
+#ifdef __cplusplus
+}
+#endif
